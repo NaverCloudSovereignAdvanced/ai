@@ -15,14 +15,3 @@ class Source(Base):
     rag_path: Mapped[str] = mapped_column(Text, nullable=False)
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-
-class StudentScore(Base):
-    __tablename__ = "student_scores"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    student_id: Mapped[str] = mapped_column(String(120), nullable=False)
-    score: Mapped[int] = mapped_column(Integer, nullable=False)
-    total: Mapped[int] = mapped_column(Integer, nullable=False)
-    answers_json: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

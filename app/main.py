@@ -1,22 +1,20 @@
-import json
 import shutil
 from pathlib import Path
 from uuid import uuid4
 
 import requests
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db, init_db
 from app.document_loader import extract_text
-from app.models import Source, StudentScore
-from app.naver_ocr import detect_answers_with_naver_ocr
-from app.ocr_grader import detect_checkbox_answers
+from app.models import Source
+from app.naver_ocr import extract_grading_fields
 from app.problem_generator import generate_problem_set
 from app.rag import build_index, retrieve
-from app.schemas import GradeResponse, ProblemRequest, ProblemSet, SourceResponse
+from app.schemas import AiGradeResponse, ProblemRequest, ProblemSet, SourceResponse
 
 app = FastAPI(title="LLM RAG Problem Generator AI Server", version="1.0.0")
 
@@ -157,54 +155,15 @@ def _collect_problem_contexts(rag_path: Path, filename: str, max_contexts: int =
     return contexts
 
 
-@app.post("/api/v1/grade", response_model=GradeResponse)
-async def grade_answer_sheet(
-    studentId: str = Form(...),
-    answerSetJson: str = Form(...),
-    image: UploadFile = File(...),
-    db: Session = Depends(get_db),
-) -> GradeResponse:
-    settings = get_settings()
-    image_id = str(uuid4())
-    image_path = settings.data_dir / "sources" / f"{image_id}_{Path(image.filename or 'answer.png').name}"
-    with image_path.open("wb") as fp:
-        shutil.copyfileobj(image.file, fp)
+@app.post("/api/v1/grade", response_model=AiGradeResponse)
+async def grade_answer_sheet_ocr(file: UploadFile = File(...)) -> AiGradeResponse:
+    content = await file.read()
 
     try:
-        answer_set = ProblemSet.model_validate_json(answerSetJson)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="answerSetJson은 ProblemSet JSON이어야 합니다.") from exc
-
-    correct_answers = [problem.answerIndex for problem in answer_set.problems]
-    try:
-        detected_answers = detect_answers_with_naver_ocr(image_path, question_count=len(correct_answers))
+        name, selected_indexes = extract_grading_fields(content, file.filename or "answer_sheet.jpg", file.content_type)
     except requests.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"네이버 OCR 호출에 실패했습니다: {exc}") from exc
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    if any(answer == -1 for answer in detected_answers):
-        checkbox_answers = detect_checkbox_answers(image_path, question_count=len(correct_answers), choice_count=4)
-        detected_answers = [
-            detected if detected != -1 else checkbox
-            for detected, checkbox in zip(detected_answers, checkbox_answers)
-        ]
-    score = sum(1 for detected, correct in zip(detected_answers, correct_answers) if detected == correct)
-
-    db.add(
-        StudentScore(
-            student_id=studentId,
-            score=score,
-            total=len(correct_answers),
-            answers_json=json.dumps(detected_answers, ensure_ascii=False),
-        )
-    )
-    db.commit()
-
-    return GradeResponse(
-        studentId=studentId,
-        score=score,
-        total=len(correct_answers),
-        detectedAnswers=detected_answers,
-        correctAnswers=correct_answers,
-    )
+    return AiGradeResponse(name=name, selected_indexes=selected_indexes)

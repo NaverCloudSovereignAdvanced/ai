@@ -22,14 +22,9 @@ class ProblemRequest(BaseModel):
     sourceId: str
 
 
-class GradeRequest(BaseModel):
-    studentId: str
-    answerIndexes: list[int]
+class AiGradeResponse(BaseModel):
+    name: str
+    selected_indexes: list[int] = Field(alias="selectedIndexes")
 
-
-class GradeResponse(BaseModel):
-    studentId: str
-    score: int
-    total: int
-    detectedAnswers: list[int]
-    correctAnswers: list[int]
+    class Config:
+        populate_by_name = True

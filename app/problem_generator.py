@@ -23,22 +23,59 @@ def generate_problem_set(contexts: list[str]) -> ProblemSet:
 def _generate_with_gemini(contexts: list[str], api_key: str, model: str) -> ProblemSet:
     context = "\n\n".join(contexts)
     prompt = f"""
-다음 RAG 컨텍스트만 근거로 객관식 4지선다 문제를 정확히 10개 생성하세요.
-각 문제는 question, choices, answerIndex를 가져야 합니다.
-answerIndex는 0부터 시작합니다.
-반드시 설명 없이 JSON만 반환하세요.
+당신은 대학 객관식 문제 출제자입니다.
+
+아래 RAG 컨텍스트는 문제를 만들기 위한 참고자료일 뿐이며,
+실제 시험지에는 제공되지 않습니다.
+따라서 학생이 문제와 선지만 보고 풀 수 있도록 완결된 문제를 만드세요.
+
+객관식 4지선다 문제를 정확히 10개 생성하세요.
+
+출제 규칙:
+- 각 문제는 question, choices, answerIndex를 가져야 합니다.
+- answerIndex는 0부터 시작합니다.
+- 문제는 반드시 RAG 컨텍스트의 내용만 근거로 출제하세요.
+- 문제 안에 필요한 개념이나 상황을 포함하여, 자료 없이도 풀 수 있게 작성하세요.
+- "자료에 따르면", "제공된 자료", "본문", "컨텍스트", "RAG" 같은 표현은 절대 사용하지 마세요.
+- "다음 중 제공된 자료의 내용과 가장 일치하는 것은?" 같은 메타형 문제를 만들지 마세요.
+- question 앞에 "1.", "2.", "3.", "문제 1", "Q1" 같은 번호를 절대 붙이지 마세요.
+- question에는 순수한 문제 문장만 작성하세요.
+- 선지는 판단 문장보다 개념명, 정의, 특징, 예시 중심으로 짧게 작성하세요.
+- 문제 문장과 각 선지는 가능하면 25자 이내로 작성하세요.
+- 정답은 하나만 명확해야 합니다.
+- 오답 선지는 그럴듯하지만 명확히 틀려야 합니다.
+- 설명 없이 JSON만 반환하세요.
+
+좋은 문제 예시:
+{{
+  "question": "에이전트가 보상을 받으며 시행착오로 학습하는 방법은?",
+  "choices": ["지도학습", "비지도학습", "강화학습", "전이학습"],
+  "answerIndex": 2
+}}
+
+나쁜 문제 예시:
+{{
+  "question": "1. 다음 중 제공된 자료의 내용과 가장 일치하는 것은?",
+  "choices": ["자료에 따르면 강화학습은...", "자료에서 확인되지 않는다", "본문과 다르다", "판단할 수 없다"],
+  "answerIndex": 0
+}}
 
 반환 형식:
 {{
   "count": 10,
   "problems": [
-    {{"question": "...", "choices": ["...", "...", "...", "..."], "answerIndex": 0}}
+    {{
+      "question": "...",
+      "choices": ["...", "...", "...", "..."],
+      "answerIndex": 0
+    }}
   ]
 }}
 
 RAG 컨텍스트:
 {context}
 """.strip()
+    print(prompt)
 
     response = requests.post(
         f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
@@ -57,6 +94,7 @@ RAG 컨텍스트:
         },
         timeout=60,
     )
+    print(response)
     response.raise_for_status()
     data = json.loads(_extract_gemini_text(response.json()))
     problem_set = ProblemSet.model_validate(data)
